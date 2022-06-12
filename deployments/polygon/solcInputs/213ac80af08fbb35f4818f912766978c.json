@@ -1,0 +1,41 @@
+{
+  "language": "Solidity",
+  "sources": {
+    "contracts/FundMe.sol": {
+      "content": "//Get Funds From Users\n//Withdraw Funds from the contract\n//Set a minimum funding value in USD\n\n// SPDX-License-Identifier: GPL-3.0\n\npragma solidity ^0.8.7;\n\nimport \"@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol\";\n\nimport \"./PriceConverter.sol\";\n\nerror NotOwner();\n\ncontract FundMe {\n    //all functions of the library are attached to the type uint256\n    //so now we can call the function like uint256.getConversionRate()\n    using PriceConverter for uint256;\n\n    uint256 public constant MINIMUM_USD = 50 * 1e18;\n\n    //List of Funders\n    address[] public funders;\n\n    //mappings\n    mapping(address => uint256) public addressToAmountFunded;\n\n    address public immutable i_owner;\n\n    //chainlink address for different chains\n    AggregatorV3Interface public priceFeed;\n\n    constructor(address priceFeedAddress) {\n        i_owner = msg.sender;\n        priceFeed = AggregatorV3Interface(priceFeedAddress); //combining interface or abi with address you get a contract;\n    }\n\n    modifier onlyOwner() {\n        // require(msg.sender == i_owner,\"Sender is not the owner\");\n        //Gas Efficient\n\n        if (msg.sender != i_owner) {\n            revert NotOwner();\n        }\n        _;\n    }\n\n    function fund() public payable {\n        require(\n            msg.value.getConversionRate(priceFeed) >= MINIMUM_USD,\n            \"Didnt send Enough\"\n        ); //1e18 = 1*10**18;\n        //a ton of computation here\n        //what is reverting\n        //undo any action before,and send remaining gas back\n\n        //add funders to an array\n\n        funders.push(msg.sender);\n        addressToAmountFunded[msg.sender] += msg.value;\n    }\n\n    //Withdraw Funds\n\n    function withdraw() public onlyOwner {\n        for (\n            uint256 funderIndex = 0;\n            funderIndex < funders.length;\n            funderIndex++\n        ) {\n            //code\n            address funder = funders[funderIndex];\n            addressToAmountFunded[funder] = 0;\n        }\n\n        //reseting the array to size zero\n        funders = new address[](0);\n\n        //Two Ways of Withdrawing Ether\n        //Transfer Function\n        //Automaticall reverts the gas fee if the transaction fails the money\n        //We transfer money to a payable address\n\n        // payable(msg.sender).transfer(address(this).balance);\n\n        //Send Function\n        //Send function does not revert the money if the transfer fails\n        // bool sendSuccess = payable(msg.sender).send(address(this).balance);\n        // require(sendSuccess,\"Send Failed\");\n\n        //Call Function\n        //The best way to send and recieve\n\n        (bool callSuccess, ) = payable(msg.sender).call{\n            value: address(this).balance\n        }(\"\");\n        require(callSuccess, \"Call Failed\");\n    }\n\n    //What happens when someone sends us money without calling the fund function;\n    //recieve\n    //fallback\n\n    receive() external payable {\n        fund();\n    }\n\n    fallback() external payable {\n        fund();\n    }\n\n    //0.18450726\n\n    //0.18447576\n}\n"
+    },
+    "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol": {
+      "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.0;\n\ninterface AggregatorV3Interface {\n  function decimals() external view returns (uint8);\n\n  function description() external view returns (string memory);\n\n  function version() external view returns (uint256);\n\n  // getRoundData and latestRoundData should both raise \"No data present\"\n  // if they do not have data to report, instead of returning unset values\n  // which could be misinterpreted as actual reported values.\n  function getRoundData(uint80 _roundId)\n    external\n    view\n    returns (\n      uint80 roundId,\n      int256 answer,\n      uint256 startedAt,\n      uint256 updatedAt,\n      uint80 answeredInRound\n    );\n\n  function latestRoundData()\n    external\n    view\n    returns (\n      uint80 roundId,\n      int256 answer,\n      uint256 startedAt,\n      uint256 updatedAt,\n      uint80 answeredInRound\n    );\n}\n"
+    },
+    "contracts/PriceConverter.sol": {
+      "content": "// SPDX-License-Identifier: GPL-3.0\n\npragma solidity ^0.8.7;\n\nimport \"@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol\";\n\nlibrary PriceConverter {\n    function getVersion() internal view returns (uint256) {\n        AggregatorV3Interface version = AggregatorV3Interface(\n            0x8A753747A1Fa494EC906cE90E9f37563A8AF630e\n        );\n        return version.version();\n    }\n\n    function getPrice(AggregatorV3Interface priceFeed)\n        internal\n        view\n        returns (uint256)\n    {\n        (\n            ,\n            /*uint80 roundID*/\n            int256 price, /*uint startedAt*/ /*uint timeStamp*/ /*uint80 answeredInRound*/\n            ,\n            ,\n\n        ) = priceFeed.latestRoundData();\n        //This is the price of ETH in USD\n        //It will have 8 decimal places so we need to convert it to 18\n        //Then typecasting\n        return uint256(price * 1e10); //10000000000\n    }\n\n    function getConversionRate(uint256 _amount, AggregatorV3Interface priceFeed)\n        internal\n        view\n        returns (uint256)\n    {\n        uint256 rate = getPrice(priceFeed);\n        uint256 ethAmountInUsd = (rate * _amount) / 1e18; //it would have 36 decimals so we reduce to 18\n        return ethAmountInUsd;\n    }\n}\n"
+    }
+  },
+  "settings": {
+    "optimizer": {
+      "enabled": false,
+      "runs": 200
+    },
+    "outputSelection": {
+      "*": {
+        "*": [
+          "abi",
+          "evm.bytecode",
+          "evm.deployedBytecode",
+          "evm.methodIdentifiers",
+          "metadata",
+          "devdoc",
+          "userdoc",
+          "storageLayout",
+          "evm.gasEstimates"
+        ],
+        "": [
+          "ast"
+        ]
+      }
+    },
+    "metadata": {
+      "useLiteralContent": true
+    }
+  }
+}
